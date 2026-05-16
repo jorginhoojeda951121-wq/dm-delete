@@ -1,14 +1,18 @@
 {
-  "name": "delete",
+  "name": "discord-ai-bot",
   "version": "1.0.0",
+  "description": "Discord AI moderation bot",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "discord",
+    "bot",
+    "openai"
+  ],
+  "author": "Figaro",
   "license": "ISC",
-  "description": "",
   "dependencies": {
     "discord.js": "^14.26.4",
     "dotenv": "^17.4.2",
