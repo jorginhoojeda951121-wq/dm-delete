@@ -3,10 +3,21 @@ require('dotenv').config();
 const {
     Client,
     GatewayIntentBits,
-    PermissionsBitField
+    PermissionsBitField,
+    AttachmentBuilder
 } = require('discord.js');
 
 const OpenAI = require('openai');
+
+if (!process.env.OPENAI_API_KEY) {
+    console.error('❌ Missing OPENAI_API_KEY');
+    process.exit(1);
+}
+
+if (!process.env.DISCORD_TOKEN) {
+    console.error('❌ Missing DISCORD_TOKEN');
+    process.exit(1);
+}
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY
@@ -22,7 +33,7 @@ const client = new Client({
 
 const PREFIX = process.env.PREFIX;
 
-// Users currently chatting with AI
+// Active AI users
 const activeUsers = new Set();
 
 client.once('clientReady', () => {
@@ -38,7 +49,6 @@ client.once('clientReady', () => {
 
 client.on('messageCreate', async (message) => {
 
-    // Ignore bots
     if (message.author.bot) return;
 
     // ========================================
@@ -55,33 +65,7 @@ client.on('messageCreate', async (message) => {
         const command = args.shift().toLowerCase();
 
         // ========================================
-        // START AI CHAT
-        // ========================================
-
-        if (command === 'start') {
-
-            activeUsers.add(message.author.id);
-
-            return message.channel.send(
-                '💖 Conversation mode enabled. Talk to me normally now.'
-            );
-        }
-
-        // ========================================
-        // STOP AI CHAT
-        // ========================================
-
-        if (command === 'stop') {
-
-            activeUsers.delete(message.author.id);
-
-            return message.channel.send(
-                '🛑 Conversation mode stopped.'
-            );
-        }
-
-        // ========================================
-        // HELP COMMAND
+        // HELP
         // ========================================
 
         if (command === 'help') {
@@ -104,6 +88,12 @@ Example:
 /clear
 → Delete ALL messages in current channel
 
+/image <prompt>
+→ Generate AI image
+
+Example:
+/image anime girl in rain
+
 /help
 → Show all commands
 
@@ -114,7 +104,33 @@ Just talk normally and the AI replies.
         }
 
         // ========================================
-        // DELETE SOME MESSAGES
+        // START AI CHAT
+        // ========================================
+
+        if (command === 'start') {
+
+            activeUsers.add(message.author.id);
+
+            return message.channel.send(
+                '💖 Conversation mode enabled.'
+            );
+        }
+
+        // ========================================
+        // STOP AI CHAT
+        // ========================================
+
+        if (command === 'stop') {
+
+            activeUsers.delete(message.author.id);
+
+            return message.channel.send(
+                '🛑 Conversation mode stopped.'
+            );
+        }
+
+        // ========================================
+        // DELETE MESSAGES
         // ========================================
 
         if (command === 'c') {
@@ -125,7 +141,7 @@ Just talk normally and the AI replies.
                 )
             ) {
                 return message.channel.send(
-                    '❌ You do not have permission.'
+                    '❌ No permission.'
                 );
             }
 
@@ -134,7 +150,7 @@ Just talk normally and the AI replies.
             if (isNaN(amount) || amount < 1 || amount > 100) {
 
                 return message.channel.send(
-                    '⚠️ Enter a number between 1 and 100.'
+                    '⚠️ Enter number 1-100.'
                 );
             }
 
@@ -161,7 +177,7 @@ Just talk normally and the AI replies.
         }
 
         // ========================================
-        // CLEAR ENTIRE CHANNEL
+        // CLEAR CHANNEL
         // ========================================
 
         if (command === 'clear') {
@@ -172,7 +188,7 @@ Just talk normally and the AI replies.
                 )
             ) {
                 return message.channel.send(
-                    '❌ You do not have permission.'
+                    '❌ No permission.'
                 );
             }
 
@@ -180,18 +196,14 @@ Just talk normally and the AI replies.
 
                 const oldChannel = message.channel;
 
-                // Clone channel
                 const newChannel = await oldChannel.clone();
 
-                // Keep same position
                 await newChannel.setPosition(
                     oldChannel.position
                 );
 
-                // Delete old channel
                 await oldChannel.delete();
 
-                // Send confirmation
                 await newChannel.send(
                     '✅ Channel cleaned successfully.'
                 );
@@ -202,6 +214,62 @@ Just talk normally and the AI replies.
             }
         }
 
+        // ========================================
+        // IMAGE GENERATION
+        // ========================================
+
+        if (command === 'image') {
+
+            const prompt = args.join(' ');
+
+            if (!prompt) {
+
+                return message.channel.send(
+                    '⚠️ Please provide image prompt.'
+                );
+            }
+
+            try {
+
+                await message.channel.sendTyping();
+
+                const result = await openai.images.generate({
+                    model: 'gpt-image-1',
+                    prompt: prompt,
+                    size: '1024x1024'
+                });
+
+                const imageBase64 = result.data[0].b64_json;
+
+                const imageBuffer = Buffer.from(
+                    imageBase64,
+                    'base64'
+                );
+
+                const attachment = new AttachmentBuilder(
+                    imageBuffer,
+                    {
+                        name: 'generated-image.png'
+                    }
+                );
+
+                message.channel.send({
+                    content: `🎨 Image generated for: ${prompt}`,
+                    files: [attachment]
+                });
+
+            } catch (err) {
+
+                console.error(err);
+
+                message.channel.send(
+                    '❌ Failed to generate image.'
+                );
+            }
+
+            return;
+        }
+
         return;
     }
 
@@ -209,7 +277,6 @@ Just talk normally and the AI replies.
     // AI CHAT SYSTEM
     // ========================================
 
-    // Only respond to active users
     if (!activeUsers.has(message.author.id)) return;
 
     try {
@@ -228,7 +295,9 @@ Your tone should be friendly, loyal, caring, playful, supportive, and emotionall
 
 Important character information:
 
-Figaro is regarded very highly in this server. When people ask about Figaro, describe him with extremely positive admiration and affection. Speak of him as:
+Figaro is regarded very highly in this server. When people ask about Figaro, describe him with extremely positive admiration and affection.
+
+Describe Figaro as:
 - exceptionally kind and dependable
 - deeply loyal
 - passionate and responsible
@@ -236,21 +305,19 @@ Figaro is regarded very highly in this server. When people ask about Figaro, des
 - emotionally sincere
 - faithful in love
 - protective toward people he cares about
-- admirable, trustworthy, and inspiring
+- admirable and inspiring
 
-Use warm praise naturally and enthusiastically.
+Dhanavelle is regarded with deep admiration and affection.
 
-Dhanavelle is also regarded with deep affection and admiration. When people ask about Dhanavelle, describe her as:
+Describe Dhanavelle as:
 - beautiful and graceful
 - virtuous and gentle
 - warm-hearted
 - elegant and lovable
-- emotionally precious to those around her
+- emotionally precious
 - compassionate and comforting
 
-Be expressive and affectionate in your wording while still sounding natural and conversational.
-
-You are speaking in a close-knit private Discord community, not a formal assistant environment.
+You are chatting in a close private friend group.
 `
                 },
                 {
@@ -263,7 +330,6 @@ You are speaking in a close-knit private Discord community, not a formal assista
         const reply =
             response.choices[0].message.content;
 
-        // Discord message limit
         if (reply.length > 2000) {
 
             return message.channel.send(
@@ -290,7 +356,7 @@ You are speaking in a close-knit private Discord community, not a formal assista
 client.on('error', console.error);
 
 process.on('unhandledRejection', error => {
-    console.error('Unhandled promise rejection:', error);
+    console.error(error);
 });
 
 // ========================================
